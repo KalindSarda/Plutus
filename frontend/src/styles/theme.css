@@ -1,0 +1,84 @@
+/* Midnight · Gold — dark (default) */
+:root {
+  --color-base:           #080c18;
+  --color-surface:        #0e1525;
+  --color-card:           #131d30;
+  --color-border:         #1c2a42;
+  --color-gold:           #c8a84b;
+  --color-gold-hover:     #e0bf6d;
+  --color-gold-muted:     #7d6730;
+  --color-income:         #3dd68c;
+  --color-expense:        #f26d6d;
+  --color-warning:        #f0a429;
+  --color-text-primary:   #eae4d4;
+  --color-text-secondary: #7a91ad;
+  --color-text-muted:     #3d5168;
+}
+
+/* Warm Parchment — light */
+[data-theme="light"] {
+  --color-base:           #f4f0e6;
+  --color-surface:        #fdfaf3;
+  --color-card:           #ffffff;
+  --color-border:         #ddd5c0;
+  --color-gold:           #9a7520;
+  --color-gold-hover:     #b08a28;
+  --color-gold-muted:     #d4b96a;
+  --color-income:         #1a9e5a;
+  --color-expense:        #d64040;
+  --color-warning:        #c47d10;
+  --color-text-primary:   #0d1629;
+  --color-text-secondary: #5a6b82;
+  --color-text-muted:     #9aabb8;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-base);
+  color: var(--color-text-primary);
+  font-family: 'Inter', 'DM Sans', sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
+}
+
+/* Hero number — gold + Playfair */
+.hero-number {
+  font-family: 'Playfair Display', Georgia, serif;
+  color: var(--color-gold);
+  font-weight: 500;
+}
+
+/* Income / expense colour utilities */
+.text-income  { color: var(--color-income); }
+.text-expense { color: var(--color-expense); }
+.text-warning { color: var(--color-warning); }
+.text-muted   { color: var(--color-text-muted); }
+.text-secondary { color: var(--color-text-secondary); }
+
+/* Card */
+.card {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+/* Gold active nav border */
+.nav-active {
+  border-left: 3px solid var(--color-gold);
+  color: var(--color-gold);
+}
