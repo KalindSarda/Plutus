@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useApp } from '../context/AppContext'
 import { categoryService } from '../services/categoryService'
 import { budgetService } from '../services/budgetService'
 import { formatINR } from '../utils/currency'
@@ -46,6 +47,7 @@ export default function Budgets() {
 
   // Delete state
   const [deletingId, setDeletingId] = useState(null)
+  const { refreshKey } = useApp()
 
   // Fetch categories once on mount
   useEffect(() => {
@@ -62,7 +64,7 @@ export default function Budgets() {
       .then(setBudgets)
       .catch((err) => setError(err?.response?.data?.detail || 'Failed to load budgets.'))
       .finally(() => setLoading(false))
-  }, [year, month])
+  }, [year, month, refreshKey])
 
   // Month navigation
   function prevMonth() {

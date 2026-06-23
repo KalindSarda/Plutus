@@ -7,3 +7,4 @@ from app.models.transaction import Transaction
 from app.models.recurring_template import RecurringTemplate
 from app.models.budget import Budget
 from app.models.credit_card_statement import CreditCardStatement
+from app.models.category_envelope import CategoryEnvelope

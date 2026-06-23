@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useApp } from '../context/AppContext'
 import { creditCardService } from '../services/creditCardService'
 import { formatINR } from '../utils/currency'
 
@@ -34,6 +35,7 @@ export default function CreditCards() {
   const [payAmount, setPayAmount] = useState('')
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState(null)
+  const { refreshKey } = useApp()
 
   const load = useCallback(async () => {
     try {
@@ -46,7 +48,7 @@ export default function CreditCards() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [refreshKey])
 
   useEffect(() => { load() }, [load])
 

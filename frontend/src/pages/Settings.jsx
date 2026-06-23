@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import { envelopeService } from '../services/envelopeService'
 
 const GROQ_MODELS = [
   { id: 'qwen/qwen3-32b', label: 'Qwen3 32B (Default)' },
@@ -29,6 +30,17 @@ export default function Settings() {
   // AI model (stored in localStorage, sent per-request ideally, but here just persisted locally)
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('plutus_groq_model') || 'qwen/qwen3-32b')
 
+  // Envelope Budgeting
+  const [envelopes, setEnvelopes] = useState([])
+  const [envCategories, setEnvCategories] = useState([])
+  const [envAccounts, setEnvAccounts] = useState([])
+  const [envCards, setEnvCards] = useState([])
+  const [envLoading, setEnvLoading] = useState(true)
+  const [envSaving, setEnvSaving] = useState({}) // { [category_id]: bool }
+  const [envMsg, setEnvMsg] = useState({})        // { [category_id]: string }
+  // Local draft state for dropdowns (before saving)
+  const [envDraft, setEnvDraft] = useState({})    // { [category_id]: { type: 'account'|'card', id: string } }
+
   function toggleTheme() {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
@@ -47,6 +59,41 @@ export default function Settings() {
       if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light')
       else document.documentElement.removeAttribute('data-theme')
     }
+  }, [])
+
+  useEffect(() => {
+    async function loadEnvelopes() {
+      setEnvLoading(true)
+      try {
+        const [envRes, catRes, accRes, ccRes] = await Promise.allSettled([
+          api.get('/api/envelopes'),
+          api.get('/api/categories'),
+          api.get('/api/accounts'),
+          api.get('/api/credit-cards'),
+        ])
+        const envData = envRes.status === 'fulfilled' ? envRes.value.data : []
+        const catData = catRes.status === 'fulfilled' ? catRes.value.data : []
+        const accData = accRes.status === 'fulfilled' ? accRes.value.data : []
+        const ccData = ccRes.status === 'fulfilled' ? ccRes.value.data : []
+
+        setEnvelopes(envData)
+        // Only show expense categories (these are the ones you assign accounts to)
+        setEnvCategories(catData.filter(c => c.type === 'expense' && !c.parent_id))
+        setEnvAccounts(accData)
+        setEnvCards(ccData)
+
+        // Initialize draft from current envelopes
+        const draft = {}
+        envData.forEach(e => {
+          if (e.account_id) draft[e.category_id] = { type: 'account', id: e.account_id }
+          else if (e.credit_card_id) draft[e.category_id] = { type: 'card', id: e.credit_card_id }
+        })
+        setEnvDraft(draft)
+      } finally {
+        setEnvLoading(false)
+      }
+    }
+    loadEnvelopes()
   }, [])
 
   async function saveProfile(e) {
@@ -85,6 +132,35 @@ export default function Settings() {
   function saveAiModel(model) {
     setAiModel(model)
     localStorage.setItem('plutus_groq_model', model)
+  }
+
+  async function saveEnvelope(categoryId) {
+    const draft = envDraft[categoryId]
+    if (!draft) return
+    setEnvSaving(s => ({ ...s, [categoryId]: true }))
+    try {
+      const payload = { category_id: categoryId }
+      if (draft.type === 'account') payload.account_id = draft.id
+      else payload.credit_card_id = draft.id
+      await envelopeService.upsert(payload)
+      setEnvMsg(m => ({ ...m, [categoryId]: 'Saved.' }))
+      setTimeout(() => setEnvMsg(m => ({ ...m, [categoryId]: '' })), 2000)
+    } catch {
+      setEnvMsg(m => ({ ...m, [categoryId]: 'Failed to save.' }))
+    } finally {
+      setEnvSaving(s => ({ ...s, [categoryId]: false }))
+    }
+  }
+
+  async function removeEnvelope(categoryId) {
+    try {
+      await envelopeService.remove(categoryId)
+      setEnvDraft(d => { const n = { ...d }; delete n[categoryId]; return n })
+      setEnvMsg(m => ({ ...m, [categoryId]: 'Removed.' }))
+      setTimeout(() => setEnvMsg(m => ({ ...m, [categoryId]: '' })), 2000)
+    } catch {
+      setEnvMsg(m => ({ ...m, [categoryId]: 'Failed to remove.' }))
+    }
   }
 
   return (
@@ -186,6 +262,83 @@ export default function Settings() {
             </button>
           ))}
         </div>
+      </Section>
+
+      {/* Envelope Budgeting */}
+      <Section title="Envelope Budgeting">
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
+          Assign a default account or card to each expense category.
+          Plutus will suggest this when you log a transaction.
+        </p>
+        {envLoading ? (
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Loading…</p>
+        ) : envCategories.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>No expense categories found.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {envCategories.map(cat => {
+              const draft = envDraft[cat.id]
+              const msg = envMsg[cat.id]
+              const saving = envSaving[cat.id]
+              return (
+                <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-primary)', minWidth: 140 }}>
+                    {cat.name}
+                  </span>
+                  <select
+                    value={draft ? `${draft.type}:${draft.id}` : ''}
+                    onChange={e => {
+                      const val = e.target.value
+                      if (!val) {
+                        setEnvDraft(d => { const n = { ...d }; delete n[cat.id]; return n })
+                      } else {
+                        const [type, id] = val.split(':')
+                        setEnvDraft(d => ({ ...d, [cat.id]: { type, id } }))
+                      }
+                    }}
+                    style={{ ...styles.input, flex: 1, minWidth: 160, padding: '0.4rem 0.6rem' }}
+                  >
+                    <option value="">— None —</option>
+                    {envAccounts.length > 0 && (
+                      <optgroup label="Bank Accounts">
+                        {envAccounts.map(a => (
+                          <option key={a.id} value={`account:${a.id}`}>{a.name} ({a.bank_name})</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {envCards.length > 0 && (
+                      <optgroup label="Credit Cards">
+                        {envCards.map(c => (
+                          <option key={c.id} value={`card:${c.id}`}>{c.name} ({c.bank_name})</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                  <button
+                    onClick={() => saveEnvelope(cat.id)}
+                    disabled={saving || !draft}
+                    style={{ ...styles.saveBtn, padding: '0.4rem 0.75rem', fontSize: 12 }}
+                  >
+                    {saving ? '…' : 'Save'}
+                  </button>
+                  {draft && (
+                    <button
+                      onClick={() => removeEnvelope(cat.id)}
+                      style={{ ...styles.dangerBtn, padding: '0.4rem 0.75rem', fontSize: 12 }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                  {msg && (
+                    <span style={{ fontSize: 12, color: msg === 'Saved.' || msg === 'Removed.' ? 'var(--color-income)' : 'var(--color-expense)' }}>
+                      {msg}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Section>
 
       {/* Danger zone */}

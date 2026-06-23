@@ -6,7 +6,7 @@ import secure
 
 from app.core.config import settings
 from app.core.rate_limiter import limiter
-from app.api.routes import auth, accounts, credit_cards, transactions, categories, budgets, recurring, reports, import_data, ai
+from app.api.routes import auth, accounts, credit_cards, transactions, categories, budgets, recurring, reports, import_data, ai, envelopes
 
 app = FastAPI(title="Plutus API", version="1.0.0")
 
@@ -45,6 +45,7 @@ app.include_router(recurring.router, prefix="/api/recurring", tags=["recurring"]
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(import_data.router, prefix="/api/import", tags=["import"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(envelopes.router, prefix="/api/envelopes", tags=["envelopes"])
 
 
 @app.get("/api/health")

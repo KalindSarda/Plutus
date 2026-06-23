@@ -4,6 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { useAuth } from '../context/AuthContext'
+import { useApp } from '../context/AppContext'
 import { reportService } from '../services/reportService'
 import api from '../services/api'
 import { aiService } from '../services/aiService'
@@ -20,6 +21,7 @@ const EXPENSE_COLOR = '#f26d6d'
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
+  const { refreshKey } = useApp()
 
   // Current viewing period
   const today = new Date()
@@ -46,7 +48,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }, [year, month])
+  }, [year, month, refreshKey])
 
   useEffect(() => {
     fetchData()

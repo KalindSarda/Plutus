@@ -7,6 +7,7 @@ class SessionStore:
 
     def __init__(self, ttl_minutes: int = 120, max_messages: int = 40):
         self._sessions: dict[str, dict] = {}
+        self._actions: dict = {}
         self._ttl = timedelta(minutes=ttl_minutes)
         self._max = max_messages
 
@@ -30,8 +31,18 @@ class SessionStore:
             "last_accessed": datetime.now(),
         }
 
+    def set_last_action(self, session_key: str, action: dict):
+        self._actions[session_key] = action
+
+    def get_last_action(self, session_key: str) -> dict | None:
+        return self._actions.get(session_key)
+
+    def clear_last_action(self, session_key: str):
+        self._actions.pop(session_key, None)
+
     def delete_session(self, session_key: str):
         self._sessions.pop(session_key, None)
+        self._actions.pop(session_key, None)
 
     def session_count(self) -> int:
         return len(self._sessions)

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useApp } from '../context/AppContext'
 import { transactionService } from '../services/transactionService'
 import { categoryService } from '../services/categoryService'
 import api from '../services/api'
@@ -33,6 +34,7 @@ export default function Transactions() {
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
+  const { refreshKey } = useApp()
   const [categorySearch, setCategorySearch] = useState('')
   const [showCatDrop, setShowCatDrop] = useState(false)
   const catDropRef = useRef(null)
@@ -71,7 +73,7 @@ export default function Transactions() {
       }
     }
     init()
-  }, [])
+  }, [refreshKey])
 
   // ---- helpers ----
 

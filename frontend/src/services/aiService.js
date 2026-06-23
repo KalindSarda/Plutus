@@ -10,10 +10,21 @@ function getSessionId() {
 export const aiService = {
   getSessionId,
 
+  async greet() {
+    const sessionId = getSessionId()
+    const { data } = await api.get('/api/ai/greet', { params: { session_id: sessionId } })
+    return data  // { response, session_id }
+  },
+
   async chat(message) {
     const sessionId = getSessionId()
     const { data } = await api.post('/api/ai/chat', { message, session_id: sessionId })
-    return data.response
+    return data  // { response, action } — caller extracts .response and .action
+  },
+
+  async undo(sessionId) {
+    const { data } = await api.post(`/api/ai/undo/${sessionId}`)
+    return data
   },
 
   async clearSession() {

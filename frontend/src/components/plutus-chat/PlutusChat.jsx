@@ -1,15 +1,20 @@
 import { useState, useRef, useEffect } from 'react'
 import { aiService } from '../../services/aiService'
+import { useApp } from '../../context/AppContext'
+
+const hasSpeech = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window
 
 export default function PlutusChat() {
+  const { bumpRefreshKey } = useApp()
+
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'Hello! I\'m Plutus, your financial companion. Ask me about your spending, budgets, or account balances.' }
-  ])
+  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [listening, setListening] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
+  const greeted = useRef(false)
 
   useEffect(() => {
     if (open && bottomRef.current) {
@@ -20,6 +25,37 @@ export default function PlutusChat() {
   useEffect(() => {
     if (open && inputRef.current) inputRef.current.focus()
   }, [open])
+
+  useEffect(() => {
+    if (!open || greeted.current) return
+    greeted.current = true
+    setLoading(true)
+    aiService.greet()
+      .then(data => {
+        setMessages([{ role: 'assistant', text: data.response }])
+      })
+      .catch(() => {
+        setMessages([{ role: 'assistant', text: 'Hey, I\'m Plutus. What\'s on your mind?' }])
+      })
+      .finally(() => setLoading(false))
+  }, [open])
+
+  function startListening() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    const recognition = new SR()
+    recognition.lang = 'en-IN'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript
+      setInput(transcript)
+      setListening(false)
+    }
+    recognition.onerror = () => setListening(false)
+    recognition.onend = () => setListening(false)
+    recognition.start()
+    setListening(true)
+  }
 
   async function handleSend(e) {
     e.preventDefault()
@@ -32,8 +68,10 @@ export default function PlutusChat() {
     setLoading(true)
 
     try {
-      const response = await aiService.chat(text)
-      setMessages(prev => [...prev, { role: 'assistant', text: response }])
+      const data = await aiService.chat(text)
+      const assistantMsg = { role: 'assistant', text: data.response, action: data.action || null }
+      setMessages(prev => [...prev, assistantMsg])
+      if (data.action) bumpRefreshKey()
     } catch (err) {
       const detail = err.response?.data?.detail || 'Something went wrong. Please try again.'
       setMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${detail}`, error: true }])
@@ -48,9 +86,13 @@ export default function PlutusChat() {
 
   async function handleClear() {
     await aiService.clearSession()
-    setMessages([
-      { role: 'assistant', text: 'Session cleared. How can I help you?' }
-    ])
+    greeted.current = false
+    setMessages([])
+    setLoading(true)
+    aiService.greet()
+      .then(data => setMessages([{ role: 'assistant', text: data.response }]))
+      .catch(() => setMessages([{ role: 'assistant', text: 'Hey, I\'m Plutus. What\'s on your mind?' }]))
+      .finally(() => setLoading(false))
   }
 
   return (
@@ -104,6 +146,27 @@ export default function PlutusChat() {
                   }}
                 >
                   <MessageText text={msg.text} />
+                  {msg.role === 'assistant' && msg.action && !msg.undone && (
+                    <UndoBar
+                      action={msg.action}
+                      onUndo={async () => {
+                        try {
+                          await aiService.undo(aiService.getSessionId())
+                          setMessages(prev => prev.map((m, idx) =>
+                            idx === i ? { ...m, text: m.text + '\n↩ Undone.', undone: true, action: null } : m
+                          ))
+                          bumpRefreshKey()
+                        } catch {
+                          // silent
+                        }
+                      }}
+                      onExpire={() => {
+                        setMessages(prev => prev.map((m, idx) =>
+                          idx === i ? { ...m, action: null } : m
+                        ))
+                      }}
+                    />
+                  )}
                 </div>
               </div>
             ))}
@@ -130,6 +193,23 @@ export default function PlutusChat() {
               disabled={loading}
               maxLength={2000}
             />
+            {hasSpeech && (
+              <button
+                type="button"
+                onClick={startListening}
+                disabled={loading || listening}
+                style={{
+                  ...styles.sendBtn,
+                  backgroundColor: listening ? 'var(--color-gold)' : 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  color: listening ? '#080c18' : 'var(--color-text-secondary)',
+                  animation: listening ? 'plutus-pulse 1s infinite' : 'none',
+                }}
+                aria-label={listening ? 'Listening…' : 'Voice input'}
+              >
+                🎤
+              </button>
+            )}
             <button type="submit" disabled={loading || !input.trim()} style={styles.sendBtn} aria-label="Send">
               ➤
             </button>
@@ -143,9 +223,55 @@ export default function PlutusChat() {
 }
 
 function MessageText({ text }) {
-  // Preserve newlines
+  // Strip markdown syntax that slips through: headers, bold, italic, bullets, backticks
+  const clean = text
+    .replace(/^#{1,6}\s+/gm, '')           // ## headings
+    .replace(/\*\*(.+?)\*\*/g, '$1')        // **bold**
+    .replace(/\*(.+?)\*/g, '$1')            // *italic*
+    .replace(/`(.+?)`/g, '$1')              // `code`
+    .replace(/^[\*\-]\s+/gm, '• ')          // * or - bullets → •
   return (
-    <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{text}</span>
+    <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{clean}</span>
+  )
+}
+
+function UndoBar({ action, onUndo, onExpire }) {
+  const [secondsLeft, setSecondsLeft] = useState(10)
+
+  useEffect(() => {
+    if (secondsLeft <= 0) { onExpire(); return }
+    const t = setTimeout(() => setSecondsLeft(s => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [secondsLeft, onExpire])
+
+  return (
+    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+        onClick={onUndo}
+        style={{
+          fontSize: 11,
+          padding: '3px 10px',
+          borderRadius: 6,
+          border: '1px solid var(--color-gold-muted)',
+          background: 'none',
+          color: 'var(--color-gold)',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        ↩ Undo
+      </button>
+      <div style={{ flex: 1, height: 3, backgroundColor: 'var(--color-border)', borderRadius: 2 }}>
+        <div style={{
+          height: '100%',
+          width: `${(secondsLeft / 10) * 100}%`,
+          backgroundColor: 'var(--color-gold)',
+          borderRadius: 2,
+          transition: 'width 1s linear',
+        }} />
+      </div>
+      <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>{secondsLeft}s</span>
+    </div>
   )
 }
 
@@ -165,6 +291,10 @@ const typingCSS = `
 }
 .plutus-typing span:nth-child(2) { animation-delay: 0.2s; }
 .plutus-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes plutus-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
 `
 
 const styles = {

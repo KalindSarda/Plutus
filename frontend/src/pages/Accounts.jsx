@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useApp } from '../context/AppContext'
 import { accountService } from '../services/accountService'
 import { formatINR } from '../utils/currency'
 
@@ -17,6 +18,7 @@ export default function Accounts() {
 
   const [deleteTarget, setDeleteTarget] = useState(null) // account object to delete
   const [deleting, setDeleting] = useState(false)
+  const { refreshKey } = useApp()
 
   const load = useCallback(async () => {
     try {
@@ -29,7 +31,7 @@ export default function Accounts() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [refreshKey])
 
   useEffect(() => { load() }, [load])
 
